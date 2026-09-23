@@ -69,13 +69,25 @@ export function renderPareto(svg, tip, result, activeId, onPick) {
   });
 
   const labels = [];
+  const boxes = [];
+  const overlaps = (b) => boxes.some((o) => Math.abs(o.x - b.x) < 16 && Math.abs(o.y - b.y) < 14);
   scen.forEach((s, i) => {
     const c = s.route;
     const x = sx(c.hours);
     const y = sy(c.price);
     const active = c.id === activeId ? ' is-active' : '';
     parts.push(`<circle class="p-scen${active}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" data-id="${c.id}"/>`);
-    labels.push(`<text class="p-label" x="${(x + 10).toFixed(1)}" y="${(y - 8).toFixed(1)}">${i + 1}</text>`);
+    const spots = [[10, -8, 'start'], [10, 18, 'start'], [-10, -8, 'end'], [-10, 18, 'end'], [0, -14, 'middle'], [0, 24, 'middle']];
+    let spot = spots[0];
+    for (const cand of spots) {
+      const b = { x: x + cand[0], y: y + cand[1] };
+      if (!overlaps(b)) {
+        spot = cand;
+        break;
+      }
+    }
+    boxes.push({ x: x + spot[0], y: y + spot[1] });
+    labels.push(`<text class="p-label" x="${(x + spot[0]).toFixed(1)}" y="${(y + spot[1]).toFixed(1)}" text-anchor="${spot[2]}">${i + 1}</text>`);
     parts.push(`<circle class="p-hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="14" data-id="${c.id}" data-i="${cands.indexOf(c)}"/>`);
   });
   svg.innerHTML = parts.join('') + labels.join('');
