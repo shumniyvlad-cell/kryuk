@@ -2,7 +2,7 @@
 
 import { FLAG_INFO } from '../engine/score.js';
 import { rub, hoursText, hoursShort, localParts, plural } from './format.js';
-import { icon, modeTag, MODE_WORD } from './icons.js';
+import { icon, modeTag, MODE_WORD, MODE_INSTR } from './icons.js';
 
 const FLAG_RISK = { 'self-transfer': 1, 'hidden-city': 2 };
 
@@ -26,13 +26,28 @@ function diffRub(a, b) {
   return rub(Math.abs(a - b));
 }
 
-// Одно предложение о том, что человек выигрывает и чем платит.
+// Сравнение с опорным маршрутом: деньги и время, без знаков минус в тексте.
+function compare(r, ref, refName) {
+  const dp = r.price - ref.price;
+  const dh = r.hours - ref.hours;
+  const smallMoney = Math.abs(dp) < 300;
+  const smallTime = Math.abs(dh) < 0.25;
+  if (smallMoney && smallTime) return `Практически то же, что ${refName}`;
+  const money = smallMoney ? null : dp < 0 ? `на ${rub(-dp)} дешевле` : `на ${rub(dp)} дороже`;
+  const time = smallTime ? null : dh < 0 ? `быстрее на ${hoursShort(-dh)}` : `дольше на ${hoursShort(dh)}`;
+  if (!money) return `${cap(time)} ${refName} при той же цене`;
+  if (!time) return `${cap(money)} ${refName} при том же времени`;
+  const sameSide = dp < 0 === dh < 0;
+  return `${cap(money)} ${refName}${sameSide ? ' и ' : ', но '}${time}`;
+}
+
+// Одно-два предложения: что человек выигрывает и чем платит.
 export function whyText(s, result) {
   const r = s.route;
   const byKey = Object.fromEntries(result.scenarios.flatMap((x) => x.tags.map((t) => [t, x.route])));
   const fastest = byKey.fastest;
   const cheapest = byKey.cheapest;
-  const optimal = byKey.optimal;
+  const optimal = byKey.optimal || fastest;
   const costs = [];
   if (r.flags.includes('night-train')) costs.push('ночь в поезде');
   if (r.flags.includes('long-layover')) costs.push('длинная стыковка');
@@ -40,49 +55,48 @@ export function whyText(s, result) {
   if (r.flags.includes('hidden-city')) costs.push('hidden-city');
   const transfers = r.flightCount - 1;
   if (transfers >= 2) costs.push(`${transfers} пересадки`);
-  const pay = costs.length ? `, платите: ${costs.join(', ')}` : '';
+  const pay = costs.length ? ` Платите: ${costs.join(', ')}.` : '';
 
   switch (s.key) {
     case 'fastest':
       return cheapest && cheapest !== r
-        ? `Быстрее всех, зато на ${diffRub(r.price, cheapest.price)} дороже самого дешёвого.`
-        : 'Быстрее всех и при этом дешевле не найти.';
+        ? `Быстрее всех. ${compare(r, cheapest, 'самого дешёвого')}.${pay}`
+        : `Быстрее всех, и дешевле не найти.${pay}`;
     case 'cheapest':
       return fastest && fastest !== r
-        ? `На ${diffRub(fastest.price, r.price)} дешевле самого быстрого, но дольше на ${hoursShort(r.hours - fastest.hours)}${pay}.`
-        : `Дешевле не найти${pay}.`;
+        ? `Дешевле не найти. ${compare(r, fastest, 'самого быстрого')}.${pay}`
+        : `Дешевле не найти.${pay}`;
     case 'optimal':
       return fastest && fastest !== r
-        ? `Лучший баланс: на ${diffRub(fastest.price, r.price)} дешевле быстрого и всего на ${hoursShort(r.hours - fastest.hours)} дольше${pay}.`
-        : `Лучший баланс цены и времени${pay}.`;
+        ? `Лучший баланс цены и времени. ${compare(r, fastest, 'самого быстрого')}.${pay}`
+        : `Лучший баланс цены и времени.${pay}`;
     case 'comfort':
-      return `Меньше всего пересадок и ночёвок в дороге${cheapest && cheapest !== r ? `; дороже самого дешёвого на ${diffRub(r.price, cheapest.price)}` : ''}.`;
+      return `Меньше всего пересадок и ночёвок в дороге.${cheapest && cheapest !== r ? ` ${compare(r, cheapest, 'самого дешёвого')}.` : ''}`;
     case 'smart':
-      return optimal
-        ? `Ещё ${hoursShort(r.hours - optimal.hours)} к оптимальному — и минус ${diffRub(optimal.price, r.price)}${pay}.`
-        : `Небольшой крюк ради заметной экономии${pay}.`;
+      return optimal && optimal !== r
+        ? `Небольшой крюк ради заметной экономии. ${compare(r, optimal, 'оптимального')}.${pay}`
+        : `Небольшой крюк ради заметной экономии.${pay}`;
     case 'hack': {
-      const clean = result.candidates.filter((c) => !c.flags.includes('self-transfer') && !c.flags.includes('hidden-city')).sort((a, b) => a.price - b.price)[0];
+      const clean = result.candidates.filter((c) => c.risk === 0).sort((a, b) => a.price - b.price)[0];
       return clean
-        ? `Экономия ${diffRub(clean.price, r.price)} к обычному билету, но риски стыковки на вас${pay}.`
-        : `Нестандартная покупка билетов${pay}.`;
+        ? `Экономия ${rub(Math.max(0, clean.price - r.price))} к обычному билету, но риск стыковки на вас.${pay}`
+        : `Нестандартная покупка билетов.${pay}`;
     }
     default: {
-      const ref = optimal || fastest;
+      const ref = optimal;
       const hubs = r.chain.filter((p) => p.type === 'city' && p.iata).slice(0, -1).map((p) => p.name);
       const strategy = [];
-      if (r.flags.includes('neighbor-airport') && r.depCity.id !== result.origin.id) strategy.push(`вылет из ${r.depCity.name} (${r.depAirport})`);
-      if (r.flags.includes('neighbor-airport') && r.arrCity.id !== result.dest.id) strategy.push(`прилёт в ${r.arrCity.name} (${r.arrAirport})`);
-      if (hubs.length) strategy.push(`через ${hubs.join(' и ')}`);
-      if (s.kind === 'purchase') strategy.push(r.variant === 'separate' ? 'раздельные билеты' : r.variant === 'hidden' ? 'hidden-city' : 'единый билет');
-      const head = strategy.length ? cap(strategy.join(', ')) : 'Другой способ';
-      if (!ref || ref === r) return `${head}${pay}.`;
-      const dp = r.price - ref.price;
-      const dh = r.hours - ref.hours;
-      const money = dp === 0 ? 'та же цена' : dp < 0 ? `на ${rub(-dp)} дешевле` : `на ${rub(dp)} дороже`;
-      const time = Math.abs(dh) < 0.25 ? 'столько же по времени' : dh < 0 ? `быстрее на ${hoursShort(-dh)}` : `дольше на ${hoursShort(dh)}`;
+      const depAirport = result.depOptions.find((o) => o.airport.iata === r.depAirport)?.airport;
+      if (s.kind === 'airport-dep' && depAirport) strategy.push(`вылет из аэропорта ${depAirport.name} (${r.depAirport})`);
+      if (s.kind === 'airport-arr') strategy.push(`прилёт в другой аэропорт (${r.arrAirport})`);
+      if (s.kind === 'hub' && hubs.length) strategy.push(`через ${hubs.join(' и ')}`);
+      if (s.kind === 'purchase') strategy.push(r.variant === 'separate' ? 'раздельные билеты' : r.variant === 'hidden' ? 'билет hidden-city' : 'единый билет');
+      if (s.kind === 'ground' && r.groundLegs.length) strategy.push(`до аэропорта ${r.groundLegs.map((g) => MODE_INSTR[g.mode]).join(' и ')}`);
+      if (!strategy.length && hubs.length) strategy.push(`через ${hubs.join(' и ')}`);
+      const head = strategy.length ? `${cap(strategy.join(', '))}.` : 'Другой способ.';
+      if (!ref || ref === r) return `${head}${pay}`;
       const tail = s.key === 'backup' ? ' Пригодится, если цены поменяются.' : '';
-      return `${head}: ${money} и ${time}, чем оптимальный${pay}.${tail}`;
+      return `${head} ${compare(r, ref, 'оптимального')}.${pay}${tail}`;
     }
   }
 }

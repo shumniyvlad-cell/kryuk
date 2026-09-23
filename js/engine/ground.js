@@ -34,7 +34,7 @@ export function localTransfer(airport) {
     price: Math.round((350 + km * 22) / 50) * 50,
     comfort: 4,
     night: false,
-    label: km > 30 ? 'аэроэкспресс или такси' : 'такси или аэроэкспресс',
+    label: airport.hub >= 2 ? 'аэроэкспресс или такси' : 'такси или автобус',
     km,
   };
 }

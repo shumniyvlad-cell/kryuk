@@ -8,7 +8,8 @@ export const SCENARIO_META = {
   smart: { title: 'Крюк ради экономии', short: 'крюк' },
   hack: { title: 'Хитрый', short: 'хак' },
   more: { title: 'Ещё вариант', short: 'ещё' },
-  airport: { title: 'Другой аэропорт', short: 'аэропорт' },
+  'airport-dep': { title: 'Другой аэропорт вылета', short: 'аэропорт' },
+  'airport-arr': { title: 'Другой аэропорт прилёта', short: 'аэропорт' },
   hub: { title: 'Через другой хаб', short: 'хаб' },
   purchase: { title: 'Другая покупка билетов', short: 'покупка' },
   ground: { title: 'Другой транспорт до аэропорта', short: 'транспорт' },
@@ -34,21 +35,26 @@ export function paretoFront(cands) {
 // «Осмысленный» фронт: выкидываем маршруты, которые выигрывают у более
 // быстрого/дешёвого/безопасного соседа лишь символически.
 export function meaningfulFront(cands) {
-  const dominated = (c, f) =>
+  const front = paretoFront(cands);
+  const pool = cands.filter((c) => !front.some((f) => epsDominated(c, f)));
+  return pool.length ? pool : front;
+}
+
+// f выигрывает у c лишь символически по одной оси и заметно по другой.
+export function epsDominated(c, f) {
+  return (
     f !== c &&
     ((f.hours <= c.hours - 1 && f.price <= c.price * 1.03) ||
       (f.price <= c.price * 1.05 && f.hours <= c.hours * 0.65) ||
       (f.price <= c.price - Math.max(1500, c.price * 0.04) && f.hours <= c.hours + 0.75) ||
       (f.risk < c.risk && f.price <= c.price * 1.04 && f.hours <= c.hours + 1) ||
-      (f.comfort >= c.comfort + 15 && f.price <= c.price * 1.03 && f.hours <= c.hours + 1));
-  const front = paretoFront(cands);
-  const pool = cands.filter((c) => !front.some((f) => dominated(c, f)));
-  return pool.length ? pool : front;
+      (f.comfort >= c.comfort + 15 && f.price <= c.price * 1.03 && f.hours <= c.hours + 1))
+  );
 }
 
 const byPrice = (a, b) => a.price - b.price || a.risk - b.risk || a.hours - b.hours;
-// Время сравниваем с шагом в полчаса: при равенстве предпочитаем без риска и дешевле.
-const byHours = (a, b) => Math.round(a.hours * 2) - Math.round(b.hours * 2) || a.risk - b.risk || a.price - b.price;
+// Время сравниваем с шагом в четверть часа: при равенстве предпочитаем без риска и дешевле.
+const byHours = (a, b) => Math.round(a.hours * 4) - Math.round(b.hours * 4) || a.risk - b.risk || a.price - b.price;
 
 const flightKey = (c) => c.chain.filter((p) => p.type === 'city' && p.iata).map((p) => p.iata).join('>');
 const groundKey = (c) => c.chain.filter((p) => p.type === 'mode').map((p) => p.mode).join('>');
@@ -101,12 +107,15 @@ export function pickScenarios(cands, params, limit = 7) {
   // Добиваем до лимита разными стратегиями: другой аэропорт, другой хаб,
   // другой способ покупки, другой наземный транспорт. Источники — по убыванию
   // строгости: осмысленный фронт, строгий фронт, затем разумная окрестность.
-  const airportsKey = (c) => `${c.depAirport}>${c.arrAirport}`;
+  // Мелкие вариации уже показанного (другой билет, другой автобус) берём,
+  // только если они заметно отличаются от показанного по цене или времени.
+  const notNoise = (c) => !scenarios.some((s) => epsDominated(c, s.route));
   const passes = [
-    ['airport', (c) => !scenarios.some((s) => airportsKey(s.route) === airportsKey(c))],
+    ['airport-dep', (c) => !scenarios.some((s) => s.route.depAirport === c.depAirport)],
+    ['airport-arr', (c) => !scenarios.some((s) => s.route.arrAirport === c.arrAirport)],
     ['hub', (c) => !scenarios.some((s) => flightKey(s.route) === flightKey(c))],
-    ['purchase', (c) => !scenarios.some((s) => flightKey(s.route) === flightKey(c) && s.route.variant === c.variant)],
-    ['ground', (c) => !scenarios.some((s) => flightKey(s.route) === flightKey(c) && groundKey(s.route) === groundKey(c))],
+    ['purchase', (c) => notNoise(c) && !scenarios.some((s) => flightKey(s.route) === flightKey(c) && s.route.variant === c.variant)],
+    ['ground', (c) => notNoise(c) && !scenarios.some((s) => flightKey(s.route) === flightKey(c) && groundKey(s.route) === groundKey(c))],
   ];
   // Проигрывает уже выбранному по цене, времени и риску сразу — годится только как запасной.
   const dominatedByChosen = (c) =>
