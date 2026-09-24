@@ -116,17 +116,33 @@ export function createMap(svg, legendEl) {
     });
 
     const labelParts = [];
+    const placed = [];
+    const collides = (x, y, width) => placed.some((b) => Math.abs(b.y - y) < 13 && x < b.x + b.w && x + width > b.x);
     for (const n of nodes(route)) {
       const p = projection([n.lon, n.lat]);
       if (!p) continue;
       const major = n.kind === 'origin' || n.kind === 'dest';
       const r = major ? 4.5 : 3.2;
+      const text = `${n.name}${n.kind === 'ghost' ? ' (билет до)' : ''}`;
+      const width = text.length * 7;
       const right = p[0] > w * 0.72;
-      const anchor = right ? 'end' : 'start';
-      const dx = right ? -9 : 9;
+      // Кандидаты позиций: справа, слева, снизу, сверху — первая без наложения.
+      const spots = right
+        ? [[-9, 4, 'end'], [9, 4, 'start'], [0, 18, 'middle'], [0, -10, 'middle']]
+        : [[9, 4, 'start'], [-9, 4, 'end'], [0, 18, 'middle'], [0, -10, 'middle']];
+      let spot = spots[0];
+      for (const s of spots) {
+        const x0 = s[2] === 'end' ? p[0] + s[0] - width : s[2] === 'middle' ? p[0] - width / 2 : p[0] + s[0];
+        if (!collides(x0, p[1] + s[1], width)) {
+          spot = s;
+          break;
+        }
+      }
+      const x0 = spot[2] === 'end' ? p[0] + spot[0] - width : spot[2] === 'middle' ? p[0] - width / 2 : p[0] + spot[0];
+      placed.push({ x: x0, y: p[1] + spot[1], w: width });
       parts.push(`<circle class="map-city" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${r}"${n.kind === 'ghost' ? ' opacity=".55"' : ''}/>`);
       labelParts.push(
-        `<text class="map-label${major ? '' : ' minor'}" x="${(p[0] + dx).toFixed(1)}" y="${(p[1] + 4).toFixed(1)}" text-anchor="${anchor}">${escapeXml(n.name)}${n.kind === 'ghost' ? ' (билет до)' : ''}</text>`,
+        `<text class="map-label${major ? '' : ' minor'}" x="${(p[0] + spot[0]).toFixed(1)}" y="${(p[1] + spot[1]).toFixed(1)}" text-anchor="${spot[2]}">${escapeXml(text)}</text>`,
       );
     }
     svg.innerHTML = parts.join('') + labelParts.join('');

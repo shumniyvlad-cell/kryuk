@@ -10,9 +10,9 @@ export function chainHtml(chain, { withIcons = true } = {}) {
   return chain
     .map((p) => {
       if (p.type === 'city') return `<span class="chain-city">${p.name}</span>`;
-      return `<span class="chain-sep">→</span>${withIcons ? modeTag(p.mode) : MODE_WORD[p.mode]}<span class="chain-sep">→</span>`;
+      return `<span class="chain-sep">→</span> ${withIcons ? modeTag(p.mode) : MODE_WORD[p.mode]} <span class="chain-sep">→</span>`;
     })
-    .join('');
+    .join(' ');
 }
 
 function flagsHtml(flags) {
