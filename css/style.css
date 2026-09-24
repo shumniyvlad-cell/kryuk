@@ -509,6 +509,7 @@ html[data-motion='off'] .scan li,
 .tl-body.quiet .tl-title { font-weight: 400; color: var(--muted-d); font-size: 14px; }
 
 .tickets { margin-top: 10px; }
+.tickets-note { font-size: 13px; color: var(--muted-d); margin: -4px 0 12px; line-height: 1.45; max-width: 60ch; }
 .tickets h4, .know h4 { font: 500 14px/1.3 var(--sans); color: var(--muted-d); margin: 0 0 10px; }
 .ticket {
   display: grid;
