@@ -31,7 +31,7 @@ export function enumeratePaths(fromSet, toSet, ctx, { maxFlights = 3 } = {}) {
   const pos = (iata) => cities.get(airports.get(iata).city);
   const paths = [];
   for (const start of fromSet) {
-    if (toSet.has(start) || !reach[maxFlights].has(start)) continue;
+    if (!reach[maxFlights].has(start)) continue;
     const direct = Math.min(...[...toSet].map((t) => haversineKm(pos(start), pos(t))));
     // Два плеча — можно и через далёкий хаб, три плеча — только без больших крюков.
     const limits = [0, direct * 3, direct * 2.3 + 800, direct * 1.7 + 500];

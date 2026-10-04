@@ -238,7 +238,7 @@ export function planRoutes(input = {}) {
   if (origin.id === dest.id) return empty(p, 'Выберите два разных города.');
 
   let depOpts = reachableAirports(p.origin, ctx, p);
-  let arrOpts = reachableAirports(p.destination, ctx, { radiusKm: Math.min(p.radiusKm, 300), modes: p.modes });
+  let arrOpts = reachableAirports(p.destination, ctx, { radiusKm: Math.min(p.radiusKm, 300), modes: p.modes, extendByEdges: false });
   const notes = {};
   if (!depOpts.length) {
     const fb = nearestReachable(p.origin, ctx, p);

@@ -66,7 +66,7 @@ export function groundOptions(city, other, ctx, modes, { maxCarKm = 700 } = {}) 
 // считаем и чуть дальше радиуса: ночной поезд в Москву — обычное дело.
 export function reachableAirports(cityId, ctx, opts) {
   const city = ctx.cities.get(cityId);
-  const { radiusKm = 500, modes = { train: true, bus: true, car: true } } = opts;
+  const { radiusKm = 500, modes = { train: true, bus: true, car: true }, extendByEdges = true } = opts;
   const result = [];
   for (const airport of ctx.airports.values()) {
     const aCity = ctx.cities.get(airport.city);
@@ -76,7 +76,7 @@ export function reachableAirports(cityId, ctx, opts) {
       continue;
     }
     const straight = haversineKm(city, aCity);
-    if (straight > radiusKm * 1.5) continue;
+    if (straight > radiusKm * (extendByEdges ? 1.5 : 1)) continue;
     for (const ground of groundOptions(city, aCity, ctx, modes)) {
       if (straight > radiusKm && ground.mode === 'car') continue;
       result.push({ airport, city: aCity, ground, km: ground.km });
