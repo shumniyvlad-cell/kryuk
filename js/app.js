@@ -117,8 +117,11 @@ async function run({ scroll = false } = {}) {
   }
 
   const codes = [...new Set(result.depOptions.map((o) => o.airport.iata))];
+  const far = result.notes && result.notes.departure;
   await logLines([
-    `Аэропорты в радиусе ${state.radiusKm} км, если вы в ${origin.loc}: <strong>${codes.join(', ')}</strong>, наземных плеч — ${result.depOptions.length}`,
+    far
+      ? `Если вы в ${origin.loc}, в радиусе ${state.radiusKm} км аэропортов нет — взял ближайшие: <strong>${far.map((c) => `${c.name} (${c.km} км)`).join(', ')}</strong>`
+      : `Аэропорты в радиусе ${state.radiusKm} км, если вы в ${origin.loc}: <strong>${codes.join(', ')}</strong>, наземных плеч — ${result.depOptions.length}`,
     `Связок до ${dest.acc}: <strong>${stats.paths}</strong>, с датами и способами покупки — ${stats.combos.toLocaleString('ru-RU')}`,
     `После отсева: <strong>${stats.candidates}</strong> реальных маршрутов, отобрано ${result.scenarios.length} за ${stats.ms} мс`,
   ]);

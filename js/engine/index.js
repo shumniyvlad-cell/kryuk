@@ -1,8 +1,8 @@
 // Точка входа движка: planRoutes(params) → сценарии, кандидаты, календарь, статистика.
 
 import { getContext } from './context.js';
-import { reachableAirports, localTransfer, nearestAirport, MODE_LABEL } from './ground.js';
-import { enumeratePaths, ticketVariants, schedule } from './flights.js';
+import { reachableAirports, nearestReachable, groundOptions, localTransfer, nearestAirport, MODE_LABEL } from './ground.js';
+import { enumeratePaths, ticketVariants, schedule, localToUTC } from './flights.js';
 import { comfortScore, riskLevel } from './score.js';
 import { pickScenarios, paretoFront } from './scenarios.js';
 import { aviasalesLink, yandexTravelLink, yandexMapsRoute } from './links.js';
@@ -237,11 +237,22 @@ export function planRoutes(input = {}) {
   if (!origin || !dest) return empty(p, 'Такого города в базе нет.');
   if (origin.id === dest.id) return empty(p, 'Выберите два разных города.');
 
-  const depOpts = reachableAirports(p.origin, ctx, p);
-  const arrOpts = reachableAirports(p.destination, ctx, { radiusKm: Math.min(p.radiusKm, 300), modes: p.modes });
+  let depOpts = reachableAirports(p.origin, ctx, p);
+  let arrOpts = reachableAirports(p.destination, ctx, { radiusKm: Math.min(p.radiusKm, 300), modes: p.modes });
+  const notes = {};
+  if (!depOpts.length) {
+    const fb = nearestReachable(p.origin, ctx, p);
+    depOpts = fb.list;
+    notes.departure = fb.cities;
+  }
+  if (!arrOpts.length) {
+    const fb = nearestReachable(p.destination, ctx, p);
+    arrOpts = fb.list;
+    notes.arrival = fb.cities;
+  }
   const fromSet = new Set(depOpts.map((o) => o.airport.iata));
   const toSet = new Set(arrOpts.map((o) => o.airport.iata));
-  if (!fromSet.size) return empty(p, `Если вы в ${origin.loc}, в радиусе ${p.radiusKm} км нет ни одного аэропорта — увеличьте радиус.`);
+  if (!fromSet.size) return empty(p, `Если вы в ${origin.loc}, в этой базе не до чего доехать — нет ни аэропорта, ни наземных связей.`);
   if (!toSet.size) return empty(p, `В ${dest.loc} и вокруг нет аэропортов в этой базе.`);
 
   const paths = enumeratePaths(fromSet, toSet, ctx, { maxFlights: 3 });
@@ -254,8 +265,8 @@ export function planRoutes(input = {}) {
 
   const dates = [];
   for (let d = -p.flex; d <= p.flex; d++) dates.push(addDays(p.date, d));
-  const raw = [];
-  let combos = 0;
+  const raw = groundOnly(origin, dest, ctx, p, dates);
+  let combos = raw.length;
   for (const dateISO of dates) {
     for (const dep of depOpts) {
       for (const arr of arrOpts) {
@@ -309,6 +320,9 @@ export function planRoutes(input = {}) {
     : null;
 
   const scenarios = pickScenarios(candidates, p);
+  for (const s of scenarios) {
+    if (notes.departure && s.route.depAirport && s.route.depCity.id !== origin.id) s.route.flags.includes('far-airport') || s.route.flags.push('far-airport');
+  }
   const front = new Set(paretoFront(candidates).map((c) => c.id));
   const ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
   return {
@@ -321,6 +335,7 @@ export function planRoutes(input = {}) {
     baseline,
     calendar,
     depOptions: depOpts,
+    notes,
     error: scenarios.length ? null : `${origin.name} → ${dest.name}: маршрутов не нашлось — попробуйте другой радиус или даты.`,
     stats: {
       airports: fromSet.size,
@@ -332,6 +347,66 @@ export function planRoutes(input = {}) {
       ms,
     },
   };
+}
+
+// Доехать без самолёта: поезд, автобус или машина прямо до города назначения.
+function groundOnly(origin, dest, ctx, p, dates) {
+  const out = [];
+  for (const g of groundOptions(origin, dest, ctx, p.modes)) {
+    for (const dateISO of dates) {
+      const dep = localToUTC(dateISO, g.night ? 22 : 8, origin.tz);
+      const arr = dep + g.hours * HOUR;
+      const leg = {
+        kind: 'ground',
+        mode: g.mode,
+        from: origin,
+        to: dest,
+        dep,
+        arr,
+        hours: g.hours,
+        price: g.price,
+        label: g.label,
+        night: g.night,
+        km: g.km,
+        tz: origin.tz,
+        link: g.mode === 'car' ? yandexMapsRoute(origin, dest) : yandexTravelLink(origin, dest, dateISO, g.mode),
+      };
+      const flags = ['ground-only'];
+      if (g.night) flags.push('night-train');
+      const c = {
+        id: `ground|${g.mode}|${origin.id}>${dest.id}`,
+        date: dateISO,
+        legs: [leg],
+        price: g.price,
+        hours: g.hours,
+        flags,
+        groundLegs: [leg],
+        flightCount: 0,
+        tickets: [],
+        ticketsPrice: 0,
+        flightHours: 0,
+        depAirport: null,
+        arrAirport: null,
+        depCity: origin,
+        arrCity: dest,
+        variant: 'ground',
+        ghost: null,
+        chain: [
+          { type: 'city', name: origin.name, id: origin.id },
+          { type: 'mode', mode: g.mode },
+          { type: 'city', name: dest.name, id: dest.id },
+        ],
+        chainKey: `${origin.id}>${g.mode}>${dest.id}`,
+        transfers: 0,
+        start: dep,
+        end: arr,
+      };
+      c.comfort = comfortScore(c);
+      c.risk = 0;
+      out.push(c);
+    }
+  }
+  return out;
 }
 
 function empty(p, error) {

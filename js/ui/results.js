@@ -210,12 +210,12 @@ export function renderDetail(el, result, scenario, { onShare } = {}) {
       <div class="detail-nums">${rub(r.price)}<small>${hoursText(r.hours)} от двери</small></div>
     </div>
     <div class="timeline">${rows.join('')}</div>
-    <div class="tickets">
+    ${r.tickets.length ? `<div class="tickets">
       <h4>Билеты</h4>
       <p class="tickets-note">Ссылки открывают живой поиск на эту дату. Цены здесь — модель, реальные рейсы и тарифы смотрите по ссылке.</p>
       ${tickets}
       <p class="sum">Итого: авиабилеты ${rub(r.ticketsPrice)} + наземная часть ${rub(groundPrice)} = ${rub(r.price)}.</p>
-    </div>
+    </div>` : `<div class="tickets"><h4>Билеты</h4><p class="tickets-note">Авиабилеты не нужны: весь путь наземный, ${rub(r.price)} по ссылке в маршруте.</p></div>`}
     ${know ? `<div class="know"><h4>Что важно знать</h4><ul>${know}</ul></div>` : ''}
   `;
   el.querySelector('#share').addEventListener('click', (e) => onShare && onShare(e.currentTarget));

@@ -137,7 +137,7 @@ export function ticketVariants(path, dateISO, ctx, opts, toSet) {
   return variants;
 }
 
-function localToUTC(dateISO, hour, tz) {
+export function localToUTC(dateISO, hour, tz) {
   const [y, m, d] = dateISO.split('-').map(Number);
   return Date.UTC(y, m - 1, d) + (hour - tz) * HOUR;
 }
